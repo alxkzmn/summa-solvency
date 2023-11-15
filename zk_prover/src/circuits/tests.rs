@@ -702,41 +702,38 @@ mod test {
         );
     }
 
-    // #[test]
-    // fn test_valid_solvency_v2_full_prover() {
-    //     const N_USERS: usize = 2u32.pow(16) as usize;
+    #[test]
+    fn test_valid_solvency_v2_full_prover() {
+        const N_USERS: usize = 2u32.pow(20) as usize;
 
-    //     // Initialize an empty circuit
-    //     let circuit = SolvencyV2::<N_BYTES_V2, N_USERS>::init_empty();
+        // Initialize an empty circuit
+        let circuit = SolvencyV2::<N_BYTES_V2, N_USERS>::init_empty();
 
-    //     // Generate a universal trusted setup for testing purposes.
-    //     //
-    //     // The verification key (vk) and the proving key (pk) are then generated.
-    //     // An empty circuit is used here to emphasize that the circuit inputs are not relevant when generating the keys.
-    //     // Important: The dimensions of the circuit used to generate the keys must match those of the circuit used to generate the proof.
-    //     // In this case, the dimensions are represented by the height of the Merkle tree.
-    //     let (params, pk, vk) = generate_setup_artifacts(22, None, circuit).unwrap();
+        // Generate a universal trusted setup for testing purposes.
+        //
+        // The verification key (vk) and the proving key (pk) are then generated.
+        // An empty circuit is used here to emphasize that the circuit inputs are not relevant when generating the keys.
+        // Important: The dimensions of the circuit used to generate the keys must match those of the circuit used to generate the proof.
+        // In this case, the dimensions are represented by the height of the Merkle tree.
+        let (params, pk, vk) = generate_setup_artifacts(21, None, circuit).unwrap();
 
-    //     // Only now we can instantiate the circuit with the actual inputs
-    //     let path = "src/merkle_sum_tree/csv/entry_2_16_1.csv";
+        // Only now we can instantiate the circuit with the actual inputs
+        let path = "src/merkle_sum_tree/csv/entry.csv";
 
-    //     let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, N_BYTES_V2>(path).unwrap();
+        let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, N_BYTES_V2>(path).unwrap();
 
-    //     let total_liabilities = BigUint::from(2280906752_u64);
+        let circuit = SolvencyV2::<N_BYTES_V2, N_USERS>::init(entries);
 
-    //     let circuit =
-    //         SolvencyV2::<N_BYTES_V2, N_USERS>::init(entries, big_uint_to_fp(&total_liabilities));
+        let valid_prover = MockProver::run(21, &circuit, circuit.instances()).unwrap();
 
-    //     let valid_prover = MockProver::run(22, &circuit, circuit.instances()).unwrap();
+        valid_prover.assert_satisfied();
 
-    //     valid_prover.assert_satisfied();
+        // Generate the proof
+        let proof = full_prover(&params, &pk, circuit.clone(), circuit.instances());
 
-    //     // Generate the proof
-    //     let proof = full_prover(&params, &pk, circuit.clone(), circuit.instances());
-
-    //     // verify the proof to be true
-    //     assert!(full_verifier(&params, &vk, proof, circuit.instances()));
-    // }
+        // verify the proof to be true
+        assert!(full_verifier(&params, &vk, proof, circuit.instances()));
+    }
 
     #[cfg(feature = "dev-graph")]
     #[test]
