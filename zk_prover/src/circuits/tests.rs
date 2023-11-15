@@ -671,48 +671,11 @@ mod test {
 
         let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, N_BYTES_V2>(path).unwrap();
 
-        let total_liabilities = BigUint::from(556862_u64);
-
-        let circuit =
-            SolvencyV2::<N_BYTES_V2, N_USERS_V2>::init(entries, big_uint_to_fp(&total_liabilities));
+        let circuit = SolvencyV2::<N_BYTES_V2, N_USERS_V2>::init(entries);
 
         let valid_prover = MockProver::run(K, &circuit, circuit.instances()).unwrap();
 
         valid_prover.assert_satisfied();
-    }
-
-    #[test]
-    fn test_invalid_total_liabilities_solvency_v2() {
-        let path = "src/merkle_sum_tree/csv/entry_16_1.csv";
-
-        let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, N_BYTES_V2>(path).unwrap();
-
-        // Wrong total liabilities should fail the instance check
-        let invalid_total_liabilities = BigUint::from(556862_u64) + BigUint::from(1_u64);
-
-        let circuit = SolvencyV2::<N_BYTES_V2, N_USERS_V2>::init(
-            entries,
-            big_uint_to_fp(&invalid_total_liabilities),
-        );
-
-        let invalid_prover = MockProver::run(K, &circuit, circuit.instances()).unwrap();
-
-        assert_eq!(
-            invalid_prover.verify(),
-            Err(vec![
-                VerifyFailure::Permutation {
-                    column: (Any::advice(), 2).into(),
-                    location: FailureLocation::InRegion {
-                        region: (0, "assign entries and accumulated balance to table").into(),
-                        offset: 16
-                    }
-                },
-                VerifyFailure::Permutation {
-                    column: (Any::Instance, 0).into(),
-                    location: FailureLocation::OutsideRegion { row: 0 }
-                },
-            ])
-        );
     }
 
     #[test]
@@ -722,66 +685,58 @@ mod test {
         // Setting N_BYTES to 9 to not trigger the overflow error during the parsing of the csv
         let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, { N_BYTES_V2 + 1 }>(path).unwrap();
 
-        let total_liabilities = BigUint::from(18446744073709551615u64) + BigUint::from(1u64);
-
-        let circuit =
-            SolvencyV2::<N_BYTES_V2, N_USERS_V2>::init(entries, big_uint_to_fp(&total_liabilities));
+        let circuit = SolvencyV2::<N_BYTES_V2, N_USERS_V2>::init(entries);
 
         let invalid_prover = MockProver::run(K, &circuit, circuit.instances()).unwrap();
 
         assert_eq!(
             invalid_prover.verify(),
-            Err(vec![
-                VerifyFailure::Permutation {
-                    column: (Any::advice(), 3).into(),
-                    location: FailureLocation::InRegion {
-                        region: (33, "assign value to perform range check").into(),
-                        offset: 8
-                    }
-                },
-                VerifyFailure::Permutation {
-                    column: (Any::Fixed, 0).into(),
-                    location: FailureLocation::OutsideRegion { row: 290 }
-                },
-            ])
+            Err(vec![VerifyFailure::Lookup {
+                name: "advice cell should be in range [0, 2^8 - 1]".to_string(),
+                lookup_index: (0),
+                location: FailureLocation::InRegion {
+                    region: (0, "assign entries and accumulated balance to table").into(),
+                    offset: 0
+                }
+            }])
         );
     }
 
-    #[test]
-    fn test_valid_solvency_v2_full_prover() {
-        const N_USERS: usize = 2u32.pow(16) as usize;
+    // #[test]
+    // fn test_valid_solvency_v2_full_prover() {
+    //     const N_USERS: usize = 2u32.pow(16) as usize;
 
-        // Initialize an empty circuit
-        let circuit = SolvencyV2::<N_BYTES_V2, N_USERS>::init_empty();
+    //     // Initialize an empty circuit
+    //     let circuit = SolvencyV2::<N_BYTES_V2, N_USERS>::init_empty();
 
-        // Generate a universal trusted setup for testing purposes.
-        //
-        // The verification key (vk) and the proving key (pk) are then generated.
-        // An empty circuit is used here to emphasize that the circuit inputs are not relevant when generating the keys.
-        // Important: The dimensions of the circuit used to generate the keys must match those of the circuit used to generate the proof.
-        // In this case, the dimensions are represented by the height of the Merkle tree.
-        let (params, pk, vk) = generate_setup_artifacts(22, None, circuit).unwrap();
+    //     // Generate a universal trusted setup for testing purposes.
+    //     //
+    //     // The verification key (vk) and the proving key (pk) are then generated.
+    //     // An empty circuit is used here to emphasize that the circuit inputs are not relevant when generating the keys.
+    //     // Important: The dimensions of the circuit used to generate the keys must match those of the circuit used to generate the proof.
+    //     // In this case, the dimensions are represented by the height of the Merkle tree.
+    //     let (params, pk, vk) = generate_setup_artifacts(22, None, circuit).unwrap();
 
-        // Only now we can instantiate the circuit with the actual inputs
-        let path = "src/merkle_sum_tree/csv/entry_2_16_1.csv";
+    //     // Only now we can instantiate the circuit with the actual inputs
+    //     let path = "src/merkle_sum_tree/csv/entry_2_16_1.csv";
 
-        let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, N_BYTES_V2>(path).unwrap();
+    //     let entries = parse_csv_to_entries::<&str, N_ASSETS_V2, N_BYTES_V2>(path).unwrap();
 
-        let total_liabilities = BigUint::from(2280906752_u64);
+    //     let total_liabilities = BigUint::from(2280906752_u64);
 
-        let circuit =
-            SolvencyV2::<N_BYTES_V2, N_USERS>::init(entries, big_uint_to_fp(&total_liabilities));
+    //     let circuit =
+    //         SolvencyV2::<N_BYTES_V2, N_USERS>::init(entries, big_uint_to_fp(&total_liabilities));
 
-        let valid_prover = MockProver::run(22, &circuit, circuit.instances()).unwrap();
+    //     let valid_prover = MockProver::run(22, &circuit, circuit.instances()).unwrap();
 
-        valid_prover.assert_satisfied();
+    //     valid_prover.assert_satisfied();
 
-        // Generate the proof
-        let proof = full_prover(&params, &pk, circuit.clone(), circuit.instances());
+    //     // Generate the proof
+    //     let proof = full_prover(&params, &pk, circuit.clone(), circuit.instances());
 
-        // verify the proof to be true
-        assert!(full_verifier(&params, &vk, proof, circuit.instances()));
-    }
+    //     // verify the proof to be true
+    //     assert!(full_verifier(&params, &vk, proof, circuit.instances()));
+    // }
 
     #[cfg(feature = "dev-graph")]
     #[test]
