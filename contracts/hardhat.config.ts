@@ -1,6 +1,7 @@
 import "@nomicfoundation/hardhat-toolbox";
 import "hardhat-gas-reporter";
 import "solidity-coverage";
+import "solidity-docgen";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -43,4 +44,5 @@ module.exports = {
     artifacts: "artifacts",
     out: "build/out",
   },
+  docgen: {},
 };
