@@ -106,7 +106,7 @@ mod test {
 
         // 1. Proving phase
         // The Custodian generates the ZK proof
-        let (zk_proof, advice_polys, omega) =
+        let (zk_snark_proof, advice_polys, omega) =
             full_prover(&params, &pk, circuit.clone(), vec![vec![]]);
 
         // Both the Custodian and the Verifier know what column range are the balance columns
@@ -125,7 +125,7 @@ mod test {
         let user_index = 3_u16;
 
         let balance_column_range = 1..N_CURRENCIES + 1;
-        let user_balances_kzg_proofs = open_user_balances::<N_CURRENCIES>(
+        let balance_opening_proofs = open_user_balances::<N_CURRENCIES>(
             &advice_polys.advice_polys,
             &advice_polys.advice_blinds,
             &params,
@@ -136,7 +136,7 @@ mod test {
 
         // 2. Verification phase
         // The Verifier verifies the ZK proof
-        assert!(full_verifier(&params, &vk, &zk_proof, vec![vec![]]));
+        assert!(full_verifier(&params, &vk, &zk_snark_proof, vec![vec![]]));
 
         // The Verifier is able to independently extract the omega from the verification key
         let omega = pk.get_vk().get_domain().get_omega();
@@ -151,7 +151,7 @@ mod test {
         // The Verifier verifies the KZG opening transcripts and calculates the grand sums
         let (verified, grand_sum) = verify_grand_sum_openings::<N_CURRENCIES>(
             &params,
-            &zk_proof,
+            &zk_snark_proof,
             kzg_proofs,
             poly_degree,
             balance_column_range,
@@ -165,8 +165,8 @@ mod test {
         let balance_column_range = 1..N_CURRENCIES + 1;
         let (balances_verified, balance_values) = verify_user_inclusion::<N_CURRENCIES>(
             &params,
-            &zk_proof,
-            user_balances_kzg_proofs,
+            &zk_snark_proof,
+            balance_opening_proofs,
             balance_column_range,
             omega,
             user_index,

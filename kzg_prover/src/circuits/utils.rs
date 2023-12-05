@@ -127,10 +127,10 @@ pub fn open_grand_sums<const N_CURRENCIES: usize>(
     balance_column_range: Range<usize>,
 ) -> Vec<Vec<u8>> {
     let challenge = Fp::zero();
-    let mut kzg_proofs = Vec::new();
+    let mut challenge_opening_proofs = Vec::new();
     balance_column_range.for_each(|i| {
-        kzg_proofs.push(
-            create_kzg_proof::<
+        challenge_opening_proofs.push(
+            create_opening_proof_at_challenge::<
                 KZGCommitmentScheme<Bn256>,
                 ProverSHPLONK<'_, Bn256>,
                 Challenge255<G1Affine>,
@@ -139,7 +139,7 @@ pub fn open_grand_sums<const N_CURRENCIES: usize>(
             .to_vec(),
         )
     });
-    kzg_proofs
+    challenge_opening_proofs
 }
 
 pub fn open_user_balances<const N_CURRENCIES: usize>(
@@ -151,10 +151,10 @@ pub fn open_user_balances<const N_CURRENCIES: usize>(
     user_index: u16,
 ) -> Vec<Vec<u8>> {
     let omega_raised = omega.pow_vartime([user_index as u64]);
-    let mut kzg_proofs = Vec::new();
+    let mut balance_opening_proofs = Vec::new();
     balance_column_range.for_each(|i| {
-        kzg_proofs.push(
-            create_kzg_proof::<
+        balance_opening_proofs.push(
+            create_opening_proof_at_challenge::<
                 KZGCommitmentScheme<Bn256>,
                 ProverSHPLONK<'_, Bn256>,
                 Challenge255<G1Affine>,
@@ -168,26 +168,26 @@ pub fn open_user_balances<const N_CURRENCIES: usize>(
             .to_vec(),
         )
     });
-    kzg_proofs
+    balance_opening_proofs
 }
 
 /// Verifies the univariate polynomial grand sum openings
 pub fn verify_grand_sum_openings<const N_CURRENCIES: usize>(
     params: &ParamsKZG<Bn256>,
-    zk_proof: &[u8],
-    kzg_proofs: Vec<Vec<u8>>,
+    zk_snark_proof: &[u8],
+    challenge_opening_proofs: Vec<Vec<u8>>,
     polynomial_degree: u64,
     balance_column_range: Range<usize>,
 ) -> (Vec<bool>, Vec<BigUint>) {
     let mut transcript: Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>> =
-        Blake2bRead::<_, _, Challenge255<_>>::init(zk_proof);
+        Blake2bRead::<_, _, Challenge255<_>>::init(zk_snark_proof);
 
     //Read the commitment points for all the  advice polynomials from the proof transcript and put them into a vector
     let mut advice_commitments = Vec::new();
     for i in 0..N_CURRENCIES + balance_column_range.start {
         let point = transcript.read_point().unwrap();
-        // Skip the balances column commitment
-        if i != 0 {
+        // Skip the advice commitments before the desired range
+        if i >= balance_column_range.start {
             advice_commitments.push(point);
         }
     }
@@ -196,14 +196,18 @@ pub fn verify_grand_sum_openings<const N_CURRENCIES: usize>(
     let mut constant_terms = Vec::<BigUint>::new();
 
     for (i, advice_commitment) in advice_commitments.iter().enumerate() {
-        let (verified, constant_term) =
-            verify_kzg_proof::<
-                KZGCommitmentScheme<Bn256>,
-                VerifierSHPLONK<'_, Bn256>,
-                Challenge255<G1Affine>,
-                Blake2bRead<_, _, Challenge255<_>>,
-                AccumulatorStrategy<_>,
-            >(params, &kzg_proofs[i], Fp::zero(), *advice_commitment);
+        let (verified, constant_term) = verify_opening::<
+            KZGCommitmentScheme<Bn256>,
+            VerifierSHPLONK<'_, Bn256>,
+            Challenge255<G1Affine>,
+            Blake2bRead<_, _, Challenge255<_>>,
+            AccumulatorStrategy<_>,
+        >(
+            params,
+            &challenge_opening_proofs[i],
+            Fp::zero(),
+            *advice_commitment,
+        );
         verification_results.push(verified);
 
         if verified {
@@ -217,14 +221,14 @@ pub fn verify_grand_sum_openings<const N_CURRENCIES: usize>(
 
 pub fn verify_user_inclusion<const N_CURRENCIES: usize>(
     params: &ParamsKZG<Bn256>,
-    zk_proof: &[u8],
-    kzg_proofs: Vec<Vec<u8>>,
+    zk_snark_proof: &[u8],
+    balance_opening_proofs: Vec<Vec<u8>>,
     balance_column_range: Range<usize>,
     omega: Fp,
     user_index: u16,
 ) -> (Vec<bool>, Vec<BigUint>) {
     let mut transcript: Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>> =
-        Blake2bRead::<_, _, Challenge255<_>>::init(zk_proof);
+        Blake2bRead::<_, _, Challenge255<_>>::init(zk_snark_proof);
 
     //Read the commitment points for all the  advice polynomials from the proof transcript and put them into a vector
     let mut advice_commitments = Vec::new();
@@ -240,7 +244,7 @@ pub fn verify_user_inclusion<const N_CURRENCIES: usize>(
     let mut balances = Vec::<BigUint>::new();
 
     for (i, advice_commitment) in advice_commitments.iter().enumerate() {
-        let (verified, eval_at_challenge) = verify_kzg_proof::<
+        let (verified, eval_at_challenge) = verify_opening::<
             KZGCommitmentScheme<Bn256>,
             VerifierSHPLONK<'_, Bn256>,
             Challenge255<G1Affine>,
@@ -248,7 +252,7 @@ pub fn verify_user_inclusion<const N_CURRENCIES: usize>(
             AccumulatorStrategy<_>,
         >(
             params,
-            &kzg_proofs[i],
+            &balance_opening_proofs[i],
             omega.pow_vartime([user_index as u64]),
             *advice_commitment,
         );
@@ -264,7 +268,7 @@ pub fn verify_user_inclusion<const N_CURRENCIES: usize>(
 }
 
 /// Creates a KZG proof for a polynomial evaluation at a challenge
-fn create_kzg_proof<
+fn create_opening_proof_at_challenge<
     'params,
     Scheme: CommitmentScheme<Curve = halo2_proofs::halo2curves::bn256::G1Affine, Scalar = Fp>,
     P: Prover<'params, Scheme>,
@@ -301,7 +305,7 @@ where
 }
 
 /// Verifies a KZG proof for a polynomial evaluation at a challenge
-pub fn verify_kzg_proof<
+pub fn verify_opening<
     'a,
     'params,
     Scheme: CommitmentScheme<Curve = halo2_proofs::halo2curves::bn256::G1Affine, Scalar = Fp>,
